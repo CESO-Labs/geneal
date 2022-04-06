@@ -1,6 +1,8 @@
 import datetime
 import logging
 import math
+import os
+
 from abc import ABCMeta, abstractmethod
 from typing import Sequence
 
@@ -21,17 +23,19 @@ class GenAlgSolver:
         self,
         n_genes: int,
         fitness_function=None,
-        max_gen: int = 1000,
+        max_gen: int = None,
+        max_time: datetime.timedelta = None,
         pop_size: int = 100,
         mutation_rate: float = 0.15,
         selection_rate: float = 0.5,
         selection_strategy: str = "roulette_wheel",
-        verbose: bool = True,
+        verbose: bool = False,
         show_stats: bool = True,
         plot_results: bool = True,
         excluded_genes: Sequence = None,
         n_crossover_points: int = 1,
         random_state: int = None,
+        checkpoint_folder: str = None,
     ):
         """
         :param fitness_function: can either be a fitness function or
@@ -65,6 +69,11 @@ class GenAlgSolver:
         self.selection_strategy = selection_strategy
 
         self.max_gen = max_gen
+        self.max_time = max_time
+
+        if not self.max_gen and not self.max_time:
+            self.max_gen = 1000
+
         self.pop_size = pop_size
         self.mutation_rate = mutation_rate
         self.selection_rate = selection_rate
@@ -88,6 +97,8 @@ class GenAlgSolver:
         self.best_fitness_ = 0
         self.population_ = None
         self.fitness_ = None
+
+        self.checkpoint_folder = checkpoint_folder
 
     def check_input_base(
         self, fitness_function, selection_strategy, pop_size, excluded_genes
@@ -125,7 +136,7 @@ class GenAlgSolver:
                 exception_messages["InvalidExcludedGenes"](excluded_genes)
             )
 
-    def solve(self):
+    def solve(self, from_checkpoint_folder=None):
         """
         Performs the genetic algorithm optimization according to the parameters
         provided at initialization.
@@ -135,26 +146,32 @@ class GenAlgSolver:
 
         start_time = datetime.datetime.now()
 
-        mean_fitness = np.ndarray(shape=(1, 0))
-        max_fitness = np.ndarray(shape=(1, 0))
-
-        # initialize the population
-        population = self.initialize_population()
+        if from_checkpoint_folder:
+            population, mean_fitness, max_fitness = self.load_checkpoint(from_checkpoint_folder)
+        else:
+            mean_fitness = np.ndarray(shape=(1, 0))
+            max_fitness = np.ndarray(shape=(1, 0))
+            population = self.initialize_population()
 
         fitness = self.calculate_fitness(population)
-
         fitness, population = self.sort_by_fitness(fitness, population)
 
-        gen_interval = max(round(self.max_gen / 10), 1)
+        last_display_time = datetime.datetime.now()
+        last_save_time = datetime.datetime.now()
+        curr_time = last_display_time
 
         gen_n = 0
-        while True:
-
-            gen_n += 1
-
-            if self.verbose and gen_n % gen_interval == 0:
+        continue_solve = True
+        while continue_solve:
+            if self.verbose or curr_time - last_display_time > datetime.timedelta(minutes=20) or gen_n % 100 == 0:
+                last_display_time = curr_time
                 logging.info(f"Iteration: {gen_n}")
                 logging.info(f"Best fitness: {fitness[0]}")
+
+            if curr_time - last_save_time > datetime.timedelta(minutes=1): # hours=4):
+                last_save_time = curr_time
+                self.save_checkpoint(population, mean_fitness, max_fitness)
+                self.checkpoint(population[0, :], fitness[0], gen_n, fitness, population)
 
             mean_fitness = np.append(mean_fitness, fitness.mean())
             max_fitness = np.append(max_fitness, fitness[0])
@@ -185,8 +202,15 @@ class GenAlgSolver:
 
             fitness, population = self.sort_by_fitness(fitness, population)
 
-            if gen_n >= self.max_gen:
-                break
+            curr_time = datetime.datetime.now()
+            gen_n += 1
+
+            if self.max_gen and gen_n >= self.max_gen:
+                continue_solve = False
+            elif self.max_time and curr_time - start_time >= self.max_time:
+                continue_solve = False
+
+        self.save_checkpoint(population, mean_fitness, max_fitness)
 
         self.generations_ = gen_n
         self.best_individual_ = population[0, :]
@@ -195,7 +219,7 @@ class GenAlgSolver:
         self.fitness_ = fitness
 
         if self.plot_results:
-            self.plot_fitness_results(mean_fitness, max_fitness, gen_n)
+            self.plot_fitness_results(mean_fitness, max_fitness)
 
         if self.show_stats:
             end_time = datetime.datetime.now()
@@ -203,6 +227,33 @@ class GenAlgSolver:
             time_str = get_elapsed_time(start_time, end_time)
 
             self.print_stats(time_str)
+
+    def save_checkpoint(self, population, mean_fitness, max_fitness):
+        if self.checkpoint_folder is None:
+            return
+
+        dt_string = datetime.datetime.now().strftime("%m%d%Y-%H%M%S")
+        checkpoint_path = f'{self.checkpoint_folder}/{dt_string}'
+        if not os.path.exists(checkpoint_path):
+            os.makedirs(checkpoint_path)
+
+        if population is not None:
+            np.save(f'{checkpoint_path}/population', population, allow_pickle=False)
+        if mean_fitness is not None:
+            np.save(f'{checkpoint_path}/mean_fitness', mean_fitness, allow_pickle=False)
+        if max_fitness is not None:
+            np.save(f'{checkpoint_path}/max_fitness', max_fitness, allow_pickle=False)
+
+    def load_checkpoint(self, from_checkpoint_folder):
+        population = np.load(f'{from_checkpoint_folder}/population.npy')
+
+        try: mean_fitness = np.load(f'{from_checkpoint_folder}/mean_fitness.npy')
+        except OSError: mean_fitness = np.ndarray(shape=(1, 0))
+
+        try: max_fitness = np.load(f'{from_checkpoint_folder}/max_fitness.npy')
+        except OSError: max_fitness = np.ndarray(shape=(1, 0))
+
+        return population, mean_fitness, max_fitness
 
     def calculate_fitness(self, population):
         """
@@ -371,7 +422,7 @@ class GenAlgSolver:
         )
 
     @staticmethod
-    def plot_fitness_results(mean_fitness, max_fitness, iterations):
+    def plot_fitness_results(mean_fitness, max_fitness):
         """
         Plots the evolution of the mean and max fitness of the population
 
@@ -383,7 +434,7 @@ class GenAlgSolver:
 
         plt.figure(figsize=(7, 7))
 
-        x = np.arange(1, iterations + 1)
+        x = np.arange(1, len(mean_fitness) + 1)
 
         plt.plot(x, mean_fitness, label="mean fitness")
         plt.plot(x, max_fitness, label="max fitness")
@@ -400,7 +451,7 @@ class GenAlgSolver:
         """
 
         logging.info("\n#############################")
-        logging.info("#\t\t\tSTATS\t\t\t#")
+        logging.info("#            STATS          #")
         logging.info("#############################\n\n")
         logging.info(f"Total running time: {time_str}\n\n")
         logging.info(f"Population size: {self.pop_size}")
@@ -410,6 +461,19 @@ class GenAlgSolver:
         logging.info(f"Number Generations: {self.generations_}\n")
         logging.info(f"Best fitness: {self.best_fitness_}")
         logging.info(f"Best individual: {self.best_individual_}")
+
+    @abstractmethod
+    def checkpoint(self, best_individual, best_fitness, gen_n, fitness, population):
+        """
+        Callback for a child class to do whatever they want with the data presented.
+        They may save, print, or do nothing on these checkpoints.
+
+        :param best_individual: the current individual with the highest fitness
+        :param gen_n: the number of which generation the loop is at
+        :param fitness: the array of the fitness values of the entire population
+        :param population: the entire population at that point
+        """
+        pass
 
     @abstractmethod
     def initialize_population(self):

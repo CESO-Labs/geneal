@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Sequence
 
 import numpy as np
@@ -11,7 +12,8 @@ class ContinuousGenAlgSolver(GenAlgSolver):
         self,
         n_genes: int,
         fitness_function=None,
-        max_gen: int = 1000,
+        max_gen: int = None,
+        max_time: timedelta = None,
         pop_size: int = 100,
         mutation_rate: float = 0.15,
         selection_rate: float = 0.5,
@@ -24,6 +26,7 @@ class ContinuousGenAlgSolver(GenAlgSolver):
         problem_type=float,
         n_crossover_points: int = 1,
         random_state: int = None,
+        checkpoint_folder: str = None,
     ):
         """
         :param fitness_function: can either be a fitness function or
@@ -48,6 +51,7 @@ class ContinuousGenAlgSolver(GenAlgSolver):
             fitness_function=fitness_function,
             n_genes=n_genes,
             max_gen=max_gen,
+            max_time=max_time,
             pop_size=pop_size,
             mutation_rate=mutation_rate,
             selection_rate=selection_rate,
@@ -58,6 +62,7 @@ class ContinuousGenAlgSolver(GenAlgSolver):
             excluded_genes=excluded_genes,
             n_crossover_points=n_crossover_points,
             random_state=random_state,
+            checkpoint_folder=checkpoint_folder,
         )
 
         if not variables_limits:
@@ -69,6 +74,18 @@ class ContinuousGenAlgSolver(GenAlgSolver):
 
         self.variables_limits = variables_limits
         self.problem_type = problem_type
+
+    def checkpoint(self, best_individual, best_fitness, gen_n, fitness, population):
+        """
+        Callback for a child class to do whatever they want with the data presented.
+        They may save, print, or do nothing on these checkpoints.
+
+        :param best_individual: the current individual with the highest fitness
+        :param gen_n: the number of which generation the loop is at
+        :param fitness: the array of the fitness values of the entire population
+        :param population: the entire population at that point
+        """
+        pass
 
     def initialize_population(self):
         """
