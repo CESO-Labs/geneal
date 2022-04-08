@@ -36,6 +36,9 @@ class GenAlgSolver:
         n_crossover_points: int = 1,
         random_state: int = None,
         checkpoint_folder: str = None,
+        display_gen_interval: int = 100,
+        display_time_interval: datetime.timedelta = datetime.timedelta(minutes=10),
+        save_checkpoint_time_interval: datetime.timedelta = datetime.timedelta(hours=1),
     ):
         """
         :param fitness_function: can either be a fitness function or
@@ -74,6 +77,9 @@ class GenAlgSolver:
         if not self.max_gen and not self.max_time:
             self.max_gen = 1000
 
+        self.display_gen_interval = display_gen_interval
+        self.display_time_interval = display_time_interval
+
         self.pop_size = pop_size
         self.mutation_rate = mutation_rate
         self.selection_rate = selection_rate
@@ -99,6 +105,7 @@ class GenAlgSolver:
         self.fitness_ = None
 
         self.checkpoint_folder = checkpoint_folder
+        self.save_checkpoint_time_interval = save_checkpoint_time_interval
 
     def check_input_base(
         self, fitness_function, selection_strategy, pop_size, excluded_genes
@@ -163,12 +170,12 @@ class GenAlgSolver:
         gen_n = 0
         continue_solve = True
         while continue_solve:
-            if self.verbose or curr_time - last_display_time > datetime.timedelta(minutes=20) or gen_n % 100 == 0:
+            if self.verbose or curr_time - last_display_time > self.display_time_interval or gen_n % self.display_gen_interval == 0:
                 last_display_time = curr_time
                 logging.info(f"Iteration: {gen_n}")
                 logging.info(f"Best fitness: {fitness[0]}")
 
-            if curr_time - last_save_time > datetime.timedelta(minutes=1): # hours=4):
+            if curr_time - last_save_time > self.save_checkpoint_time_interval:
                 last_save_time = curr_time
                 self.save_checkpoint(population, mean_fitness, max_fitness)
                 self.checkpoint(population[0, :], fitness[0], gen_n, fitness, population)

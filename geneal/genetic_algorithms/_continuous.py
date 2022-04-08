@@ -27,6 +27,9 @@ class ContinuousGenAlgSolver(GenAlgSolver):
         n_crossover_points: int = 1,
         random_state: int = None,
         checkpoint_folder: str = None,
+        display_gen_interval: int = 100,
+        display_time_interval: timedelta = timedelta(minutes=20),
+        save_checkpoint_time_interval: timedelta = timedelta(hours=1),
     ):
         """
         :param fitness_function: can either be a fitness function or
@@ -63,6 +66,9 @@ class ContinuousGenAlgSolver(GenAlgSolver):
             n_crossover_points=n_crossover_points,
             random_state=random_state,
             checkpoint_folder=checkpoint_folder,
+            display_gen_interval=display_gen_interval,
+            display_time_interval=display_time_interval,
+            save_checkpoint_time_interval=save_checkpoint_time_interval,
         )
 
         if not variables_limits:
